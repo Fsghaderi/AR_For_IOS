@@ -25,7 +25,7 @@ struct ContentView: View {
                 TopToolbarView(sessionManager: sessionManager)
 
                 // Instructions (auto-hide after first placement)
-                if showInstructions && sessionManager.placedComponents.isEmpty {
+                if showInstructions && sessionManager.placedModels.isEmpty {
                     InstructionsView()
                         .padding(.top, 20)
                 }
@@ -35,8 +35,22 @@ struct ContentView: View {
                 // Bottom component selector
                 ComponentSelectorView(sessionManager: sessionManager)
             }
+
+            // Loading overlay
+            if sessionManager.isLoadingModel {
+                Color.black.opacity(0.3)
+                    .edgesIgnoringSafeArea(.all)
+                VStack {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(1.5)
+                    Text("Loading model...")
+                        .foregroundColor(.white)
+                        .padding(.top, 10)
+                }
+            }
         }
-        .onChange(of: sessionManager.placedComponents.count) { oldValue, newValue in
+        .onChange(of: sessionManager.placedModels.count) { oldValue, newValue in
             if newValue > 0 {
                 withAnimation {
                     showInstructions = false
@@ -123,15 +137,15 @@ struct ARViewContainer: UIViewRepresentable {
                 // Find the model entity (might be a child)
                 if let modelEntity = findModelEntity(from: hitEntity) {
                     Task { @MainActor in
-                        if let component = findComponent(for: modelEntity) {
-                            sessionManager.selectComponent(component)
+                        if let model = findModel(for: modelEntity) {
+                            sessionManager.selectModel(model)
                         }
                     }
                     return
                 }
             }
 
-            // If no entity was tapped, try to place a new component
+            // If no entity was tapped, try to place a new model
             let results = arView.raycast(from: location, allowing: .estimatedPlane, alignment: .horizontal)
 
             if let firstResult = results.first {
@@ -142,7 +156,7 @@ struct ARViewContainer: UIViewRepresentable {
                     let localPosition = anchor.convert(position: position, from: nil)
 
                     Task { @MainActor in
-                        addNewComponent(at: localPosition)
+                        await addNewModel(at: localPosition)
                     }
                 }
             }
@@ -162,8 +176,8 @@ struct ARViewContainer: UIViewRepresentable {
                     dragStartPosition = modelEntity.position
 
                     Task { @MainActor in
-                        if let component = findComponent(for: modelEntity) {
-                            sessionManager.selectComponent(component)
+                        if let model = findModel(for: modelEntity) {
+                            sessionManager.selectModel(model)
                             sessionManager.isDragging = true
                         }
                     }
@@ -191,8 +205,8 @@ struct ARViewContainer: UIViewRepresentable {
                         draggedEntity.position = newPosition
 
                         Task { @MainActor in
-                            if let component = findComponent(for: draggedEntity) {
-                                component.position = newPosition
+                            if let model = findModel(for: draggedEntity) {
+                                model.position = newPosition
                             }
                         }
                     }
@@ -220,9 +234,8 @@ struct ARViewContainer: UIViewRepresentable {
                let modelEntity = findModelEntity(from: hitEntity) {
 
                 Task { @MainActor in
-                    if let component = findComponent(for: modelEntity) {
-                        sessionManager.selectComponent(component)
-                        // Could trigger a context menu here in the future
+                    if let model = findModel(for: modelEntity) {
+                        sessionManager.selectModel(model)
                     }
                 }
             }
@@ -233,6 +246,14 @@ struct ARViewContainer: UIViewRepresentable {
                 return modelEntity
             }
 
+            // Check children
+            for child in entity.children {
+                if let found = findModelEntity(from: child) {
+                    return found
+                }
+            }
+
+            // Check parent
             var current: Entity? = entity
             while let parent = current?.parent {
                 if let modelEntity = parent as? ModelEntity {
@@ -244,23 +265,35 @@ struct ARViewContainer: UIViewRepresentable {
             return nil
         }
 
-        private func findComponent(for entity: ModelEntity) -> PlacedARComponent? {
-            return sessionManager.placedComponents.first { $0.entity === entity || $0.entity.name == entity.name }
+        private func findModel(for entity: ModelEntity) -> PlacedARModel? {
+            return sessionManager.placedModels.first { model in
+                guard let modelEntity = model.entity else { return false }
+                return modelEntity === entity || modelEntity.name == entity.name
+            }
         }
 
-        private func addNewComponent(at position: SIMD3<Float>) {
+        private func addNewModel(at position: SIMD3<Float>) async {
             guard let anchor = sceneAnchor else { return }
 
-            let component = PlacedARComponent(
-                type: sessionManager.selectedComponentType,
-                color: sessionManager.selectedColor,
+            let model = PlacedARModel(
+                modelType: sessionManager.selectedModelType,
                 position: position,
-                size: sessionManager.componentSize
+                scale: sessionManager.selectedScale
             )
 
-            anchor.addChild(component.entity)
-            sessionManager.placedComponents.append(component)
-            sessionManager.selectComponent(component)
+            sessionManager.isLoadingModel = true
+
+            await model.loadModel()
+
+            guard let entity = model.entity else {
+                sessionManager.isLoadingModel = false
+                return
+            }
+
+            anchor.addChild(entity)
+            sessionManager.placedModels.append(model)
+            sessionManager.selectModel(model)
+            sessionManager.isLoadingModel = false
         }
     }
 }

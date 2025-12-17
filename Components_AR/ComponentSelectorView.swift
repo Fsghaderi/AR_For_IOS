@@ -7,63 +7,65 @@
 
 import SwiftUI
 
-/// Bottom toolbar for selecting components to place
+/// Bottom toolbar for selecting models to place
 struct ComponentSelectorView: View {
     @ObservedObject var sessionManager: ARSessionManager
-    @State private var showColorPicker = false
+    @State private var showScalePicker = false
 
     var body: some View {
         VStack(spacing: 0) {
-            // Action buttons for selected component
-            if sessionManager.activeComponent != nil {
-                SelectedComponentActions(sessionManager: sessionManager, showColorPicker: $showColorPicker)
+            // Action buttons for selected model
+            if sessionManager.activeModel != nil {
+                SelectedModelActions(sessionManager: sessionManager, showScalePicker: $showScalePicker)
                     .padding(.bottom, 8)
             }
 
-            // Color picker sheet
-            if showColorPicker {
-                ColorPickerView(sessionManager: sessionManager, isPresented: $showColorPicker)
+            // Scale picker sheet
+            if showScalePicker {
+                ScalePickerView(sessionManager: sessionManager, isPresented: $showScalePicker)
                     .padding(.bottom, 8)
             }
 
-            // Component type selector
-            ComponentTypeSelectorView(sessionManager: sessionManager)
+            // Model type selector
+            ModelTypeSelectorView(sessionManager: sessionManager)
         }
         .padding(.horizontal)
         .padding(.bottom, 20)
     }
 }
 
-/// Actions for the currently selected component
-struct SelectedComponentActions: View {
+/// Actions for the currently selected model
+struct SelectedModelActions: View {
     @ObservedObject var sessionManager: ARSessionManager
-    @Binding var showColorPicker: Bool
+    @Binding var showScalePicker: Bool
 
     var body: some View {
         HStack(spacing: 16) {
-            // Color button
+            // Scale button
             Button(action: {
                 withAnimation {
-                    showColorPicker.toggle()
+                    showScalePicker.toggle()
                 }
             }) {
                 VStack {
-                    Image(systemName: "paintpalette.fill")
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .font(.system(size: 20))
-                    Text("Color")
+                    Text("Scale")
                         .font(.caption2)
                 }
                 .foregroundColor(.white)
                 .frame(width: 60, height: 50)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(sessionManager.activeComponent?.color.swiftUIColor ?? .blue)
+                        .fill(Color.blue.opacity(0.8))
                 )
             }
 
             // Duplicate button
             Button(action: {
-                sessionManager.duplicateActiveComponent()
+                Task {
+                    await sessionManager.duplicateActiveModel()
+                }
             }) {
                 VStack {
                     Image(systemName: "plus.square.on.square")
@@ -75,13 +77,13 @@ struct SelectedComponentActions: View {
                 .frame(width: 60, height: 50)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.blue.opacity(0.8))
+                        .fill(Color.green.opacity(0.8))
                 )
             }
 
             // Delete button
             Button(action: {
-                sessionManager.deleteActiveComponent()
+                sessionManager.deleteActiveModel()
             }) {
                 VStack {
                     Image(systemName: "trash.fill")
@@ -124,36 +126,34 @@ struct SelectedComponentActions: View {
     }
 }
 
-/// Color picker for changing component colors
-struct ColorPickerView: View {
+/// Scale picker for adjusting model size
+struct ScalePickerView: View {
     @ObservedObject var sessionManager: ARSessionManager
     @Binding var isPresented: Bool
 
-    let columns = [
-        GridItem(.flexible()),
-        GridItem(.flexible()),
-        GridItem(.flexible()),
-        GridItem(.flexible())
-    ]
-
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 12) {
-            ForEach(ARComponentColor.allCases) { color in
+        HStack(spacing: 16) {
+            ForEach(ARModelScale.allCases) { scale in
                 Button(action: {
-                    sessionManager.selectedColor = color
-                    sessionManager.updateActiveComponentColor(color)
+                    sessionManager.updateActiveModelScale(scale)
                     withAnimation {
                         isPresented = false
                     }
                 }) {
-                    Circle()
-                        .fill(color.swiftUIColor)
-                        .frame(width: 44, height: 44)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white, lineWidth: sessionManager.selectedColor == color ? 3 : 0)
-                        )
-                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 2)
+                    VStack {
+                        Image(systemName: scale.iconName)
+                            .font(.system(size: 24))
+                        Text(scale.rawValue)
+                            .font(.caption2)
+                    }
+                    .foregroundColor(.white)
+                    .frame(width: 70, height: 60)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(sessionManager.selectedScale == scale
+                                ? Color.blue.opacity(0.8)
+                                : Color.gray.opacity(0.6))
+                    )
                 }
             }
         }
@@ -165,28 +165,30 @@ struct ColorPickerView: View {
     }
 }
 
-/// Selector for component types
-struct ComponentTypeSelectorView: View {
+/// Selector for model types
+struct ModelTypeSelectorView: View {
     @ObservedObject var sessionManager: ARSessionManager
 
     var body: some View {
         HStack(spacing: 12) {
-            ForEach(ARComponentType.allCases) { componentType in
+            ForEach(ARModelType.allCases) { modelType in
                 Button(action: {
-                    sessionManager.selectedComponentType = componentType
+                    sessionManager.selectedModelType = modelType
                 }) {
                     VStack {
-                        Image(systemName: componentType.iconName)
+                        Image(systemName: modelType.iconName)
                             .font(.system(size: 24))
-                        Text(componentType.rawValue)
+                        Text(modelType.displayName)
                             .font(.caption2)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
                     .foregroundColor(.white)
-                    .frame(width: 60, height: 60)
+                    .frame(width: 80, height: 60)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(sessionManager.selectedComponentType == componentType
-                                ? sessionManager.selectedColor.swiftUIColor.opacity(0.8)
+                            .fill(sessionManager.selectedModelType == modelType
+                                ? Color.orange.opacity(0.8)
                                 : Color.gray.opacity(0.6))
                     )
                 }
@@ -208,16 +210,23 @@ struct TopToolbarView: View {
 
     var body: some View {
         HStack {
-            // Component count
-            Text("\(sessionManager.placedComponents.count) objects")
-                .font(.headline)
-                .foregroundColor(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule()
-                        .fill(Color.black.opacity(0.6))
-                )
+            // Model count
+            HStack(spacing: 8) {
+                if sessionManager.isLoadingModel {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(0.8)
+                }
+                Text("\(sessionManager.placedModels.count) objects")
+                    .font(.headline)
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.6))
+            )
 
             Spacer()
 
@@ -237,7 +246,7 @@ struct TopToolbarView: View {
             .alert("Clear All Objects", isPresented: $showClearAlert) {
                 Button("Cancel", role: .cancel) {}
                 Button("Clear All", role: .destructive) {
-                    sessionManager.clearAllComponents()
+                    sessionManager.clearAllModels()
                 }
             } message: {
                 Text("Are you sure you want to remove all placed objects?")
@@ -252,7 +261,7 @@ struct TopToolbarView: View {
 struct InstructionsView: View {
     var body: some View {
         VStack {
-            Text("Tap on a surface to place objects")
+            Text("Tap on a surface to place models")
                 .font(.subheadline)
                 .foregroundColor(.white)
                 .padding(.horizontal, 16)
@@ -262,7 +271,7 @@ struct InstructionsView: View {
                         .fill(Color.black.opacity(0.6))
                 )
 
-            Text("Drag objects to move them")
+            Text("Drag models to move them")
                 .font(.caption)
                 .foregroundColor(.white.opacity(0.8))
                 .padding(.horizontal, 12)

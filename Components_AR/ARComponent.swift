@@ -9,133 +9,136 @@ import Foundation
 import SwiftUI
 import RealityKit
 
-/// Represents different types of 3D components that can be placed in AR
-enum ARComponentType: String, CaseIterable, Identifiable {
-    case cube = "Cube"
-    case sphere = "Sphere"
-    case cylinder = "Cylinder"
-    case cone = "Cone"
-    case plane = "Plane"
+/// Represents different types of 3D models that can be placed in AR
+enum ARModelType: String, CaseIterable, Identifiable {
+    case logFort = "LogFort"
+    case logMash = "LogMash"
+    case stumpvilleHouse = "StumpvilleHouse"
 
     var id: String { rawValue }
+
+    /// Display name for the model
+    var displayName: String {
+        switch self {
+        case .logFort: return "Log Fort"
+        case .logMash: return "Log Mash"
+        case .stumpvilleHouse: return "Stumpville House"
+        }
+    }
 
     /// Icon name for the component selector
     var iconName: String {
         switch self {
-        case .cube: return "cube.fill"
-        case .sphere: return "circle.fill"
-        case .cylinder: return "cylinder.fill"
-        case .cone: return "cone.fill"
-        case .plane: return "square.fill"
+        case .logFort: return "building.fill"
+        case .logMash: return "house.lodge.fill"
+        case .stumpvilleHouse: return "house.fill"
         }
     }
 
-    /// Generate the mesh for this component type
-    func generateMesh(size: Float = 0.1) -> MeshResource {
-        switch self {
-        case .cube:
-            return MeshResource.generateBox(size: size, cornerRadius: 0.005)
-        case .sphere:
-            return MeshResource.generateSphere(radius: size / 2)
-        case .cylinder:
-            return MeshResource.generateCylinder(height: size, radius: size / 2)
-        case .cone:
-            return MeshResource.generateCone(height: size, radius: size / 2)
-        case .plane:
-            return MeshResource.generatePlane(width: size, depth: size)
+    /// File name of the USD model
+    var fileName: String {
+        return rawValue + ".usdc"
+    }
+
+    /// Load the 3D model entity
+    func loadModel() async -> ModelEntity? {
+        do {
+            let entity = try await ModelEntity(named: fileName)
+            entity.generateCollisionShapes(recursive: true)
+            return entity
+        } catch {
+            print("Failed to load model \(fileName): \(error)")
+            // Return a fallback box if model fails to load
+            return createFallbackEntity()
         }
+    }
+
+    /// Create a fallback entity if model loading fails
+    private func createFallbackEntity() -> ModelEntity {
+        let mesh = MeshResource.generateBox(size: 0.1, cornerRadius: 0.005)
+        let material = SimpleMaterial(color: .gray, roughness: 0.15, isMetallic: true)
+        let entity = ModelEntity(mesh: mesh, materials: [material])
+        entity.generateCollisionShapes(recursive: false)
+        return entity
     }
 }
 
-/// Available colors for AR components
-enum ARComponentColor: String, CaseIterable, Identifiable {
-    case red = "Red"
-    case blue = "Blue"
-    case green = "Green"
-    case yellow = "Yellow"
-    case orange = "Orange"
-    case purple = "Purple"
-    case gray = "Gray"
-    case white = "White"
+/// Available scale options for AR models
+enum ARModelScale: String, CaseIterable, Identifiable {
+    case small = "Small"
+    case medium = "Medium"
+    case large = "Large"
 
     var id: String { rawValue }
 
-    var uiColor: UIColor {
+    var scaleFactor: Float {
         switch self {
-        case .red: return .systemRed
-        case .blue: return .systemBlue
-        case .green: return .systemGreen
-        case .yellow: return .systemYellow
-        case .orange: return .systemOrange
-        case .purple: return .systemPurple
-        case .gray: return .systemGray
-        case .white: return .white
+        case .small: return 0.005
+        case .medium: return 0.01
+        case .large: return 0.02
         }
     }
 
-    var swiftUIColor: Color {
+    var iconName: String {
         switch self {
-        case .red: return .red
-        case .blue: return .blue
-        case .green: return .green
-        case .yellow: return .yellow
-        case .orange: return .orange
-        case .purple: return .purple
-        case .gray: return .gray
-        case .white: return .white
+        case .small: return "s.circle.fill"
+        case .medium: return "m.circle.fill"
+        case .large: return "l.circle.fill"
         }
     }
 }
 
-/// Represents a placed AR component in the scene
-class PlacedARComponent: Identifiable, ObservableObject {
+/// Represents a placed AR model in the scene
+class PlacedARModel: Identifiable, ObservableObject {
     let id: UUID
-    let type: ARComponentType
-    var color: ARComponentColor
-    var entity: ModelEntity
+    let modelType: ARModelType
+    var entity: ModelEntity?
+    var anchorEntity: AnchorEntity?
     var position: SIMD3<Float>
+    var scale: ARModelScale
     @Published var isSelected: Bool = false
+    @Published var isLoading: Bool = true
 
-    init(type: ARComponentType, color: ARComponentColor, position: SIMD3<Float>, size: Float = 0.1) {
+    init(modelType: ARModelType, position: SIMD3<Float>, scale: ARModelScale = .medium) {
         self.id = UUID()
-        self.type = type
-        self.color = color
+        self.modelType = modelType
         self.position = position
+        self.scale = scale
+    }
 
-        // Create the entity
-        let mesh = type.generateMesh(size: size)
-        let material = SimpleMaterial(color: color.uiColor, roughness: 0.15, isMetallic: true)
-        self.entity = ModelEntity(mesh: mesh, materials: [material])
-        self.entity.name = id.uuidString
-        self.entity.position = position
+    /// Load the model asynchronously
+    func loadModel() async {
+        guard let loadedEntity = await modelType.loadModel() else {
+            await MainActor.run {
+                self.isLoading = false
+            }
+            return
+        }
 
-        // Enable collision for gesture recognition
-        self.entity.generateCollisionShapes(recursive: false)
+        await MainActor.run {
+            self.entity = loadedEntity
+            self.entity?.name = id.uuidString
+            self.entity?.scale = SIMD3<Float>(repeating: scale.scaleFactor)
+            self.entity?.position = position
+            self.isLoading = false
+        }
     }
 
     /// Update the entity's position
     func updatePosition(_ newPosition: SIMD3<Float>) {
         self.position = newPosition
-        self.entity.position = newPosition
+        self.entity?.position = newPosition
     }
 
-    /// Update the entity's color
-    func updateColor(_ newColor: ARComponentColor) {
-        self.color = newColor
-        let material = SimpleMaterial(color: newColor.uiColor, roughness: 0.15, isMetallic: true)
-        self.entity.model?.materials = [material]
+    /// Update the entity's scale
+    func updateScale(_ newScale: ARModelScale) {
+        self.scale = newScale
+        self.entity?.scale = SIMD3<Float>(repeating: newScale.scaleFactor)
     }
 
     /// Highlight or unhighlight the entity when selected
     func setHighlighted(_ highlighted: Bool) {
         isSelected = highlighted
-        if highlighted {
-            // Add a slight glow/emission effect when selected
-            var material = SimpleMaterial(color: color.uiColor, roughness: 0.05, isMetallic: true)
-            self.entity.model?.materials = [material]
-        } else {
-            let material = SimpleMaterial(color: color.uiColor, roughness: 0.15, isMetallic: true)
-            self.entity.model?.materials = [material]
-        }
+        // Visual feedback could be added here (e.g., outline shader)
     }
 }

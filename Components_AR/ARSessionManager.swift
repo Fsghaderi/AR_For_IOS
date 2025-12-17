@@ -10,28 +10,28 @@ import SwiftUI
 import RealityKit
 import Combine
 
-/// Manages the AR session state and placed components
+/// Manages the AR session state and placed models
 @MainActor
 class ARSessionManager: ObservableObject {
-    /// All placed components in the scene
-    @Published var placedComponents: [PlacedARComponent] = []
+    /// All placed models in the scene
+    @Published var placedModels: [PlacedARModel] = []
 
-    /// Currently selected component type for placement
-    @Published var selectedComponentType: ARComponentType = .cube
+    /// Currently selected model type for placement
+    @Published var selectedModelType: ARModelType = .logFort
 
-    /// Currently selected color for new components
-    @Published var selectedColor: ARComponentColor = .blue
+    /// Currently selected scale for new models
+    @Published var selectedScale: ARModelScale = .medium
 
-    /// Currently selected/active component in the scene (for editing)
-    @Published var activeComponent: PlacedARComponent?
+    /// Currently selected/active model in the scene (for editing)
+    @Published var activeModel: PlacedARModel?
 
-    /// Whether the user is currently dragging a component
+    /// Whether the user is currently dragging a model
     @Published var isDragging: Bool = false
 
-    /// Size for new components
-    @Published var componentSize: Float = 0.1
+    /// Whether a model is currently being loaded
+    @Published var isLoadingModel: Bool = false
 
-    /// The anchor entity that holds all placed components
+    /// The anchor entity that holds all placed models
     var sceneAnchor: AnchorEntity?
 
     /// Reference to the RealityKit content for adding/removing entities
@@ -52,102 +52,122 @@ class ARSessionManager: ObservableObject {
         content.camera = .spatialTracking
     }
 
-    /// Add a new component at the specified position
-    func addComponent(at position: SIMD3<Float>) {
+    /// Add a new model at the specified position
+    func addModel(at position: SIMD3<Float>) async {
         guard let anchor = sceneAnchor else { return }
 
-        let component = PlacedARComponent(
-            type: selectedComponentType,
-            color: selectedColor,
+        isLoadingModel = true
+
+        let model = PlacedARModel(
+            modelType: selectedModelType,
             position: position,
-            size: componentSize
+            scale: selectedScale
         )
 
-        anchor.addChild(component.entity)
-        placedComponents.append(component)
+        // Load the model asynchronously
+        await model.loadModel()
 
-        // Select the newly placed component
-        selectComponent(component)
+        guard let entity = model.entity else {
+            isLoadingModel = false
+            return
+        }
+
+        anchor.addChild(entity)
+        placedModels.append(model)
+
+        // Select the newly placed model
+        selectModel(model)
+        isLoadingModel = false
     }
 
-    /// Remove a component from the scene
-    func removeComponent(_ component: PlacedARComponent) {
-        component.entity.removeFromParent()
-        placedComponents.removeAll { $0.id == component.id }
+    /// Remove a model from the scene
+    func removeModel(_ model: PlacedARModel) {
+        model.entity?.removeFromParent()
+        placedModels.removeAll { $0.id == model.id }
 
-        if activeComponent?.id == component.id {
-            activeComponent = nil
+        if activeModel?.id == model.id {
+            activeModel = nil
         }
     }
 
-    /// Remove all components from the scene
-    func clearAllComponents() {
-        for component in placedComponents {
-            component.entity.removeFromParent()
+    /// Remove all models from the scene
+    func clearAllModels() {
+        for model in placedModels {
+            model.entity?.removeFromParent()
         }
-        placedComponents.removeAll()
-        activeComponent = nil
+        placedModels.removeAll()
+        activeModel = nil
     }
 
-    /// Select a component for editing
-    func selectComponent(_ component: PlacedARComponent?) {
-        // Deselect previous component
-        activeComponent?.setHighlighted(false)
+    /// Select a model for editing
+    func selectModel(_ model: PlacedARModel?) {
+        // Deselect previous model
+        activeModel?.setHighlighted(false)
 
-        // Select new component
-        activeComponent = component
-        component?.setHighlighted(true)
+        // Select new model
+        activeModel = model
+        model?.setHighlighted(true)
     }
 
-    /// Deselect the active component
+    /// Deselect the active model
     func deselectAll() {
-        activeComponent?.setHighlighted(false)
-        activeComponent = nil
+        activeModel?.setHighlighted(false)
+        activeModel = nil
     }
 
-    /// Find a component by its entity
-    func findComponent(by entity: Entity) -> PlacedARComponent? {
-        return placedComponents.first { $0.entity === entity || $0.entity.name == entity.name }
+    /// Find a model by its entity
+    func findModel(by entity: Entity) -> PlacedARModel? {
+        return placedModels.first { $0.entity === entity || $0.entity?.name == entity.name }
     }
 
-    /// Find a component by its ID
-    func findComponent(by id: UUID) -> PlacedARComponent? {
-        return placedComponents.first { $0.id == id }
+    /// Find a model by its ID
+    func findModel(by id: UUID) -> PlacedARModel? {
+        return placedModels.first { $0.id == id }
     }
 
-    /// Update the color of the active component
-    func updateActiveComponentColor(_ color: ARComponentColor) {
-        activeComponent?.updateColor(color)
+    /// Update the scale of the active model
+    func updateActiveModelScale(_ scale: ARModelScale) {
+        activeModel?.updateScale(scale)
+        selectedScale = scale
     }
 
-    /// Move the active component to a new position
-    func moveActiveComponent(to position: SIMD3<Float>) {
-        activeComponent?.updatePosition(position)
+    /// Move the active model to a new position
+    func moveActiveModel(to position: SIMD3<Float>) {
+        activeModel?.updatePosition(position)
     }
 
-    /// Delete the currently selected component
-    func deleteActiveComponent() {
-        guard let component = activeComponent else { return }
-        removeComponent(component)
+    /// Delete the currently selected model
+    func deleteActiveModel() {
+        guard let model = activeModel else { return }
+        removeModel(model)
     }
 
-    /// Duplicate the active component
-    func duplicateActiveComponent() {
-        guard let component = activeComponent else { return }
+    /// Duplicate the active model
+    func duplicateActiveModel() async {
+        guard let model = activeModel else { return }
+
+        isLoadingModel = true
 
         // Create offset position
         let offset: SIMD3<Float> = [0.15, 0, 0.15]
-        let newPosition = component.position + offset
+        let newPosition = model.position + offset
 
-        let newComponent = PlacedARComponent(
-            type: component.type,
-            color: component.color,
+        let newModel = PlacedARModel(
+            modelType: model.modelType,
             position: newPosition,
-            size: componentSize
+            scale: model.scale
         )
 
-        sceneAnchor?.addChild(newComponent.entity)
-        placedComponents.append(newComponent)
-        selectComponent(newComponent)
+        await newModel.loadModel()
+
+        guard let entity = newModel.entity else {
+            isLoadingModel = false
+            return
+        }
+
+        sceneAnchor?.addChild(entity)
+        placedModels.append(newModel)
+        selectModel(newModel)
+        isLoadingModel = false
     }
 }
