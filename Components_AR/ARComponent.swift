@@ -29,8 +29,8 @@ enum ARModelType: String, CaseIterable, Identifiable {
     /// Icon name for the component selector
     var iconName: String {
         switch self {
-        case .logFort: return "building.fill"
-        case .logMash: return "house.lodge.fill"
+        case .logFort: return "building.2.fill"
+        case .logMash: return "square.stack.3d.up.fill"
         case .stumpvilleHouse: return "house.fill"
         }
     }

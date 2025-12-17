@@ -34,23 +34,7 @@ class ARSessionManager: ObservableObject {
     /// The anchor entity that holds all placed models
     var sceneAnchor: AnchorEntity?
 
-    /// Reference to the RealityKit content for adding/removing entities
-    var realityContent: RealityViewContent?
-
     init() {}
-
-    /// Set up the scene anchor
-    func setupScene(content: RealityViewContent) {
-        self.realityContent = content
-
-        // Create a horizontal plane anchor
-        let anchor = AnchorEntity(.plane(.horizontal, classification: .any, minimumBounds: SIMD2<Float>(0.2, 0.2)))
-        content.add(anchor)
-        self.sceneAnchor = anchor
-
-        // Enable spatial tracking
-        content.camera = .spatialTracking
-    }
 
     /// Add a new model at the specified position
     func addModel(at position: SIMD3<Float>) async {
