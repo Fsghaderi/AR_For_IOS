@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import RealityKit
+import Combine
 
 /// Represents different types of 3D models that can be placed in AR
 enum ARModelType: String, CaseIterable, Identifiable {
