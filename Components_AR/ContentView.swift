@@ -89,9 +89,10 @@ struct ARViewContainer: UIViewRepresentable {
         let anchor = AnchorEntity(plane: .horizontal)
         arView.scene.addAnchor(anchor)
 
-        // Store reference to anchor in coordinator
+        // Store reference to anchor in coordinator and session manager
         context.coordinator.sceneAnchor = anchor
         context.coordinator.arView = arView
+        sessionManager.sceneAnchor = anchor
 
         // Add gesture recognizers
         let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
