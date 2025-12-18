@@ -212,9 +212,9 @@ enum ARModelScale: String, CaseIterable, Identifiable {
 
     var scaleFactor: Float {
         switch self {
-        case .small: return 0.005
-        case .medium: return 0.01
-        case .large: return 0.02
+        case .small: return 0.5
+        case .medium: return 1.0
+        case .large: return 1.5
         }
     }
 
