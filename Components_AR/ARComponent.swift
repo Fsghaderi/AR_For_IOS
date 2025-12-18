@@ -40,25 +40,163 @@ enum ARModelType: String, CaseIterable, Identifiable {
         return rawValue + ".usdc"
     }
 
-    /// Load the 3D model entity
+    /// Load the 3D model entity - creates procedural models
     func loadModel() async -> ModelEntity? {
-        do {
-            let entity = try await ModelEntity(named: fileName)
-            entity.generateCollisionShapes(recursive: true)
-            return entity
-        } catch {
-            print("Failed to load model \(fileName): \(error)")
-            // Return a fallback box if model fails to load
-            return createFallbackEntity()
-        }
+        // Create procedural models instead of loading from files
+        return createProceduralModel()
     }
 
-    /// Create a fallback entity if model loading fails
-    private func createFallbackEntity() -> ModelEntity {
-        let mesh = MeshResource.generateBox(size: 0.1, cornerRadius: 0.005)
-        let material = SimpleMaterial(color: .gray, roughness: 0.15, isMetallic: true)
-        let entity = ModelEntity(mesh: mesh, materials: [material])
-        entity.generateCollisionShapes(recursive: false)
+    /// Create a procedural 3D model based on the model type
+    private func createProceduralModel() -> ModelEntity {
+        let entity = ModelEntity()
+
+        switch self {
+        case .logFort:
+            // Create a fort-like structure with multiple boxes
+            let baseSize: Float = 0.15
+            let wallHeight: Float = 0.12
+            let wallThickness: Float = 0.02
+
+            let woodMaterial = SimpleMaterial(color: .init(red: 0.6, green: 0.4, blue: 0.2, alpha: 1.0), roughness: 0.8, isMetallic: false)
+
+            // Front wall
+            let frontWall = ModelEntity(
+                mesh: .generateBox(size: [baseSize, wallHeight, wallThickness]),
+                materials: [woodMaterial]
+            )
+            frontWall.position = [0, wallHeight/2, -baseSize/2]
+
+            // Back wall
+            let backWall = ModelEntity(
+                mesh: .generateBox(size: [baseSize, wallHeight, wallThickness]),
+                materials: [woodMaterial]
+            )
+            backWall.position = [0, wallHeight/2, baseSize/2]
+
+            // Left wall
+            let leftWall = ModelEntity(
+                mesh: .generateBox(size: [wallThickness, wallHeight, baseSize]),
+                materials: [woodMaterial]
+            )
+            leftWall.position = [-baseSize/2, wallHeight/2, 0]
+
+            // Right wall
+            let rightWall = ModelEntity(
+                mesh: .generateBox(size: [wallThickness, wallHeight, baseSize]),
+                materials: [woodMaterial]
+            )
+            rightWall.position = [baseSize/2, wallHeight/2, 0]
+
+            // Add towers at corners
+            let towerMaterial = SimpleMaterial(color: .init(red: 0.5, green: 0.3, blue: 0.15, alpha: 1.0), roughness: 0.8, isMetallic: false)
+            let towerHeight: Float = 0.18
+            let towerSize: Float = 0.03
+
+            let corners: [SIMD3<Float>] = [
+                [-baseSize/2, towerHeight/2, -baseSize/2],
+                [baseSize/2, towerHeight/2, -baseSize/2],
+                [-baseSize/2, towerHeight/2, baseSize/2],
+                [baseSize/2, towerHeight/2, baseSize/2]
+            ]
+
+            for corner in corners {
+                let tower = ModelEntity(
+                    mesh: .generateBox(size: [towerSize, towerHeight, towerSize]),
+                    materials: [towerMaterial]
+                )
+                tower.position = corner
+                entity.addChild(tower)
+            }
+
+            entity.addChild(frontWall)
+            entity.addChild(backWall)
+            entity.addChild(leftWall)
+            entity.addChild(rightWall)
+
+        case .logMash:
+            // Create a mash/shelter structure
+            let roofMaterial = SimpleMaterial(color: .init(red: 0.7, green: 0.5, blue: 0.3, alpha: 1.0), roughness: 0.7, isMetallic: false)
+            let baseMaterial = SimpleMaterial(color: .init(red: 0.55, green: 0.35, blue: 0.2, alpha: 1.0), roughness: 0.8, isMetallic: false)
+
+            // Base platform
+            let base = ModelEntity(
+                mesh: .generateBox(size: [0.12, 0.02, 0.12]),
+                materials: [baseMaterial]
+            )
+            base.position = [0, 0.01, 0]
+
+            // Support pillars
+            let pillarHeight: Float = 0.08
+            let pillarPositions: [SIMD3<Float>] = [
+                [-0.04, pillarHeight/2 + 0.02, -0.04],
+                [0.04, pillarHeight/2 + 0.02, -0.04],
+                [-0.04, pillarHeight/2 + 0.02, 0.04],
+                [0.04, pillarHeight/2 + 0.02, 0.04]
+            ]
+
+            for pos in pillarPositions {
+                let pillar = ModelEntity(
+                    mesh: .generateBox(size: [0.015, pillarHeight, 0.015]),
+                    materials: [baseMaterial]
+                )
+                pillar.position = pos
+                entity.addChild(pillar)
+            }
+
+            // Angled roof
+            let roof = ModelEntity(
+                mesh: .generateBox(size: [0.14, 0.02, 0.14], cornerRadius: 0.005),
+                materials: [roofMaterial]
+            )
+            roof.position = [0, 0.11, 0]
+            roof.orientation = simd_quatf(angle: .pi / 12, axis: [1, 0, 0])
+
+            entity.addChild(base)
+            entity.addChild(roof)
+
+        case .stumpvilleHouse:
+            // Create a house structure
+            let wallMaterial = SimpleMaterial(color: .init(red: 0.8, green: 0.7, blue: 0.5, alpha: 1.0), roughness: 0.6, isMetallic: false)
+            let roofMaterial = SimpleMaterial(color: .init(red: 0.5, green: 0.2, blue: 0.1, alpha: 1.0), roughness: 0.9, isMetallic: false)
+
+            // Main house body
+            let houseBody = ModelEntity(
+                mesh: .generateBox(size: [0.12, 0.1, 0.12]),
+                materials: [wallMaterial]
+            )
+            houseBody.position = [0, 0.05, 0]
+
+            // Roof (pyramid)
+            let roof = ModelEntity(
+                mesh: .generateBox(size: [0.14, 0.06, 0.14]),
+                materials: [roofMaterial]
+            )
+            roof.position = [0, 0.13, 0]
+            roof.scale = [1, 0.7, 1]
+
+            // Door
+            let doorMaterial = SimpleMaterial(color: .init(red: 0.3, green: 0.2, blue: 0.1, alpha: 1.0), roughness: 0.5, isMetallic: false)
+            let door = ModelEntity(
+                mesh: .generateBox(size: [0.03, 0.06, 0.01]),
+                materials: [doorMaterial]
+            )
+            door.position = [0, 0.03, -0.061]
+
+            // Window
+            let windowMaterial = SimpleMaterial(color: .init(red: 0.6, green: 0.8, blue: 1.0, alpha: 0.8), roughness: 0.1, isMetallic: true)
+            let window = ModelEntity(
+                mesh: .generateBox(size: [0.025, 0.025, 0.01]),
+                materials: [windowMaterial]
+            )
+            window.position = [0.035, 0.07, -0.061]
+
+            entity.addChild(houseBody)
+            entity.addChild(roof)
+            entity.addChild(door)
+            entity.addChild(window)
+        }
+
+        entity.generateCollisionShapes(recursive: true)
         return entity
     }
 }
