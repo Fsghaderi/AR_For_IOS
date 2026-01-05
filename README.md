@@ -1,6 +1,6 @@
 # AR Components
 
-An iOS AR app for placing and manipulating 3D architectural models in augmented reality.
+An iOS AR app for placing and manipulating 3D Furniture models in augmented reality.
 
 ## What it does
 
